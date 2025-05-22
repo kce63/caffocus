@@ -24,7 +24,7 @@ class MainActivity : AppCompatActivity() {
 
     private var isRunning = false
     private var isWorkTime = true
-    private var totalTimeInMillis = 1 * 60 * 1000L
+    private var totalTimeInMillis = 25 * 60 * 1000L
     private var timeLeftInMillis = totalTimeInMillis
     private var countDownTimer: CountDownTimer? = null
 
