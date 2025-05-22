@@ -36,7 +36,7 @@
         android:layout_centerHorizontal="true"
         app:indicatorSize="180dp"
         app:trackThickness="12dp"
-        app:indicatorColor="#A2845E"
+        app:indicatorColor="#FFFFFF"
         app:trackColor="#A2845E"
         style="@style/Widget.MaterialComponents.CircularProgressIndicator" />
 

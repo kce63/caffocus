@@ -2,7 +2,6 @@ package com.example.pomo
 
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Handler
@@ -17,10 +16,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timerText: TextView
     private lateinit var progressBar: CircularProgressIndicator
     private lateinit var quoteText: TextView
-    private lateinit var prefs: SharedPreferences
     private lateinit var playButton: ImageButton
     private lateinit var resetButton: ImageButton
     private lateinit var stopButton: ImageButton
+
+    private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
 
     private var isRunning = false
     private var isWorkTime = true
@@ -42,7 +42,7 @@ class MainActivity : AppCompatActivity() {
             if (prefs.getBoolean("show_quote", true)) {
                 val random = quotes.random()
                 quoteText.text = random
-                quoteHandler.postDelayed(this, 5 * 60 * 1000L) // 5분마다 반복
+                quoteHandler.postDelayed(this, 5 * 60 * 1000L)
             }
         }
     }
@@ -51,11 +51,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+
         timerText = findViewById(R.id.timerText)
         progressBar = findViewById(R.id.progressBar)
         quoteText = findViewById(R.id.quoteText)
-        prefs = getSharedPreferences("settings", MODE_PRIVATE)
-
         playButton = findViewById(R.id.play)
         resetButton = findViewById(R.id.rotate_ccw)
         stopButton = findViewById(R.id.power)
@@ -191,41 +190,23 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        prefs.edit().apply {
-            putLong("time_left", timeLeftInMillis)
-            putLong("saved_time", System.currentTimeMillis())
-            putBoolean("was_running", isRunning)
-            putBoolean("is_work_time", isWorkTime)
-        }.apply()
-        countDownTimer?.cancel()
+        if (isRunning) {
+            countDownTimer?.cancel()
+            val currentTime = System.currentTimeMillis()
+            prefs.edit().putLong("resume_time", currentTime).putLong("time_left", timeLeftInMillis).apply()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-
-        val wasRunning = prefs.getBoolean("was_running", false)
-        isWorkTime = prefs.getBoolean("is_work_time", true)
-        totalTimeInMillis = if (isWorkTime) 25 * 60 * 1000L else 5 * 60 * 1000L
-        val savedTime = prefs.getLong("saved_time", System.currentTimeMillis())
-        val prevLeft = prefs.getLong("time_left", totalTimeInMillis)
-        val passed = System.currentTimeMillis() - savedTime
-
-        timeLeftInMillis = prevLeft - passed
-        if (timeLeftInMillis <= 0L) {
-            timeLeftInMillis = 0L
-            isRunning = false
-        }
-
-        updateTimerText()
-        updateProgress()
-
-        if (wasRunning && timeLeftInMillis > 0L) {
+        if (isRunning) {
+            val resumeTime = prefs.getLong("resume_time", System.currentTimeMillis())
+            val previousLeft = prefs.getLong("time_left", totalTimeInMillis)
+            val passed = System.currentTimeMillis() - resumeTime
+            timeLeftInMillis = previousLeft - passed
+            if (timeLeftInMillis < 0L) timeLeftInMillis = 0L
             startTimer()
-        } else {
-            isRunning = false
-            playButton.setImageResource(android.R.drawable.ic_media_play)
         }
-
         if (prefs.getBoolean("show_quote", true)) {
             quoteHandler.postDelayed(quoteRunnable, 5 * 60 * 1000L)
         }
