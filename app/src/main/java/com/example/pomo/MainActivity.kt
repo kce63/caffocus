@@ -5,65 +5,97 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.CountDownTimer
-import android.view.Menu
-import android.view.MenuItem
+import android.os.Handler
+import android.os.Looper
+import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.progressindicator.CircularProgressIndicator
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var statusText: TextView
     private lateinit var timerText: TextView
-    private lateinit var progressBar: ProgressBar
-    private lateinit var startPauseButton: ImageButton
+    private lateinit var progressBar: CircularProgressIndicator
     private lateinit var quoteText: TextView
+    private lateinit var prefs: SharedPreferences
+    private lateinit var playButton: ImageButton
+    private lateinit var resetButton: ImageButton
+    private lateinit var stopButton: ImageButton
 
     private var isRunning = false
     private var isWorkTime = true
-    private var timeLeftInMillis: Long = 25 * 60 * 1000
-    private var totalTimeInMillis: Long = 25 * 60 * 1000
+    private var totalTimeInMillis = 1 * 60 * 1000L
+    private var timeLeftInMillis = totalTimeInMillis
     private var countDownTimer: CountDownTimer? = null
-    private var quoteTimer: CountDownTimer? = null
-
-    private lateinit var prefs: SharedPreferences
 
     private val quotes = listOf(
+        "성공은 매일 반복한 작은 노력들의 합이다.",
+        "지금 하는 일이 미래의 나를 만든다.",
+        "포기하지 마라. 위대한 일은 시간이 걸린다.",
         "시작이 반이다.",
-        "포기하지 마라. 큰일도 작은 행동에서 시작된다.",
-        "공부는 미래의 너에게 보내는 선물이다.",
-        "오늘 걷지 않으면 내일은 뛰어야 한다.",
-        "성공은 작은 노력이 반복된 결과다."
+        "매일 한 걸음이 먼 길을 만든다."
     )
+
+    private val quoteHandler = Handler(Looper.getMainLooper())
+    private val quoteRunnable = object : Runnable {
+        override fun run() {
+            if (prefs.getBoolean("show_quote", true)) {
+                val random = quotes.random()
+                quoteText.text = random
+                quoteHandler.postDelayed(this, 5 * 60 * 1000L) // 5분마다 반복
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        prefs = getSharedPreferences("settings", MODE_PRIVATE)
-
-        statusText = findViewById(R.id.statusText)
         timerText = findViewById(R.id.timerText)
         progressBar = findViewById(R.id.progressBar)
-        startPauseButton = findViewById(R.id.startPauseButton)
         quoteText = findViewById(R.id.quoteText)
+        prefs = getSharedPreferences("settings", MODE_PRIVATE)
+
+        playButton = findViewById(R.id.play)
+        resetButton = findViewById(R.id.rotate_ccw)
+        stopButton = findViewById(R.id.power)
+
+        playButton.setOnClickListener {
+            if (isRunning) pauseTimer() else startTimer()
+        }
+
+        resetButton.setOnClickListener {
+            resetTimer()
+        }
+
+        stopButton.setOnClickListener {
+            stopTimerAndShowEndDialog()
+        }
+
+        quoteText.setOnClickListener {
+            QuoteDialog(
+                context = this,
+                quote = quoteText.text.toString(),
+                isSwitchOn = prefs.getBoolean("show_quote", true)
+            ) { isChecked ->
+                prefs.edit().putBoolean("show_quote", isChecked).apply()
+                updateQuoteVisibility()
+            }.show()
+        }
 
         updateQuoteVisibility()
         updateTimerText()
         updateProgress()
 
-        startPauseButton.setOnClickListener {
-            if (isRunning) pauseTimer() else startTimer()
-        }
-
-        startQuoteTimer()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        updateQuoteVisibility()
+        resetButton.visibility = View.GONE
+        stopButton.visibility = View.GONE
     }
 
     private fun startTimer() {
+        playButton.setImageResource(android.R.drawable.ic_media_pause)
+        resetButton.visibility = View.VISIBLE
+        stopButton.visibility = View.VISIBLE
+
         countDownTimer = object : CountDownTimer(timeLeftInMillis, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 timeLeftInMillis = millisUntilFinished
@@ -73,29 +105,62 @@ class MainActivity : AppCompatActivity() {
 
             override fun onFinish() {
                 isRunning = false
-                startPauseButton.setImageResource(android.R.drawable.ic_media_play)
+                playButton.setImageResource(android.R.drawable.ic_media_play)
                 val title = if (isWorkTime) "25분 종료" else "휴식 끝"
                 val message = if (isWorkTime) "5분 휴식을 시작할까요?" else "다시 집중을 시작할까요?"
                 showAlert(title, message) {
                     isWorkTime = !isWorkTime
-                    totalTimeInMillis = if (isWorkTime) 25 * 60 * 1000 else 5 * 60 * 1000
+                    totalTimeInMillis = if (isWorkTime) 25 * 60 * 1000L else 5 * 60 * 1000L
                     timeLeftInMillis = totalTimeInMillis
-                    statusText.text = if (isWorkTime) "집중 시간" else "휴식 시간"
                     updateTimerText()
                     updateProgress()
                     startTimer()
                 }
             }
         }.start()
-
         isRunning = true
-        startPauseButton.setImageResource(android.R.drawable.ic_media_pause)
     }
 
     private fun pauseTimer() {
         countDownTimer?.cancel()
         isRunning = false
-        startPauseButton.setImageResource(android.R.drawable.ic_media_play)
+        playButton.setImageResource(android.R.drawable.ic_media_play)
+    }
+
+    private fun resetTimer() {
+        countDownTimer?.cancel()
+        isRunning = false
+        isWorkTime = true
+        totalTimeInMillis = 25 * 60 * 1000L
+        timeLeftInMillis = totalTimeInMillis
+        updateTimerText()
+        updateProgress()
+        playButton.setImageResource(android.R.drawable.ic_media_play)
+        resetButton.visibility = View.GONE
+        stopButton.visibility = View.GONE
+    }
+
+    private fun stopTimerAndShowEndDialog() {
+        countDownTimer?.cancel()
+        isRunning = false
+        isWorkTime = true
+        totalTimeInMillis = 25 * 60 * 1000L
+        timeLeftInMillis = totalTimeInMillis
+        updateTimerText()
+        updateProgress()
+        playButton.setImageResource(android.R.drawable.ic_media_play)
+        resetButton.visibility = View.GONE
+        stopButton.visibility = View.GONE
+        showAlert("타이머 종료", "홈으로 돌아갑니다.") {}
+    }
+
+    private fun showAlert(title: String, message: String, onConfirm: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("확인") { _, _ -> onConfirm() }
+            .show()
     }
 
     private fun updateTimerText() {
@@ -111,52 +176,64 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateQuoteVisibility() {
-        val showQuote = prefs.getBoolean("show_quote", true)
-        if (showQuote) {
-            quoteText.text = quotes.random()
+        val show = prefs.getBoolean("show_quote", true)
+        if (show) {
+            val random = quotes.random()
+            quoteText.text = random
             quoteText.visibility = TextView.VISIBLE
+            quoteHandler.removeCallbacks(quoteRunnable)
+            quoteHandler.postDelayed(quoteRunnable, 5 * 60 * 1000L)
         } else {
             quoteText.visibility = TextView.GONE
+            quoteHandler.removeCallbacks(quoteRunnable)
         }
     }
 
-    private fun startQuoteTimer() {
-        quoteTimer?.cancel()
-        if (!prefs.getBoolean("show_quote", true)) return
-
-        quoteTimer = object : CountDownTimer(300000, 300000) {
-            override fun onTick(millisUntilFinished: Long) {}
-            override fun onFinish() {
-                quoteText.text = quotes.random()
-                startQuoteTimer()
-            }
-        }.start()
+    override fun onPause() {
+        super.onPause()
+        prefs.edit().apply {
+            putLong("time_left", timeLeftInMillis)
+            putLong("saved_time", System.currentTimeMillis())
+            putBoolean("was_running", isRunning)
+            putBoolean("is_work_time", isWorkTime)
+        }.apply()
+        countDownTimer?.cancel()
     }
 
-    private fun showAlert(title: String, message: String, onConfirm: () -> Unit) {
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setCancelable(false)
-            .setPositiveButton("확인") { _, _ -> onConfirm() }
-            .show()
+    override fun onResume() {
+        super.onResume()
+
+        val wasRunning = prefs.getBoolean("was_running", false)
+        isWorkTime = prefs.getBoolean("is_work_time", true)
+        totalTimeInMillis = if (isWorkTime) 25 * 60 * 1000L else 5 * 60 * 1000L
+        val savedTime = prefs.getLong("saved_time", System.currentTimeMillis())
+        val prevLeft = prefs.getLong("time_left", totalTimeInMillis)
+        val passed = System.currentTimeMillis() - savedTime
+
+        timeLeftInMillis = prevLeft - passed
+        if (timeLeftInMillis <= 0L) {
+            timeLeftInMillis = 0L
+            isRunning = false
+        }
+
+        updateTimerText()
+        updateProgress()
+
+        if (wasRunning && timeLeftInMillis > 0L) {
+            startTimer()
+        } else {
+            isRunning = false
+            playButton.setImageResource(android.R.drawable.ic_media_play)
+        }
+
+        if (prefs.getBoolean("show_quote", true)) {
+            quoteHandler.postDelayed(quoteRunnable, 5 * 60 * 1000L)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         countDownTimer?.cancel()
-        quoteTimer?.cancel()
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.menu_main, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == R.id.menu_settings) {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
-        return super.onOptionsItemSelected(item)
+        quoteHandler.removeCallbacks(quoteRunnable)
     }
 }
